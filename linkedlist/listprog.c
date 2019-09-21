@@ -39,6 +39,33 @@ int print(ListL* list){
 	return 0;
 }
 
+int removeNeg(ListL* list){
+	NodeL* current = list->head->next;
+	NodeL* tmp;
+	while(current->next != NULL) {
+		if(current->value < 0) {
+			tmp = current;
+			current->prev->next = current->next;
+			current->next->prev = current->prev;
+			current = current->next;
+			free(tmp);
+		} else current = current->next;
+	}
+	if(list->head->value < 0){
+		current = list->head->next;
+		free(current->prev);
+		list->head = current;
+		current->prev = NULL;
+	}
+	if(list->tail->value < 0) {
+		current = list->tail->prev;
+		free(current->next);
+		current->next = NULL;
+		list->tail = current;
+	}
+	return 0;
+}
+
 int erase(ListL* list) {
 	NodeL* current = list->tail;
 	if(current == NULL) return 0;
@@ -59,6 +86,8 @@ int main() {
 		if (scanf("%lf",&d) != 1) break;
 		if (append(&list,d) != 0) break;
 	}
+	print(&list);
+	removeNeg(&list);
 	print(&list);
 	erase(&list);
 	print(&list);
