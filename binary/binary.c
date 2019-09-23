@@ -14,5 +14,7 @@ void binary(int n) {
 }
 
 int main() {
-	binary(666);
+	int n;
+	if(scanf("%d",&n)!=1) puts("error");
+	else binary(n);
 }
