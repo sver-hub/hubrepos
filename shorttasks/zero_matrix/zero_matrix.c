@@ -17,15 +17,7 @@ int get_zeroed(FILE* f)
 	{
 		for(_i = i; _i; _i--)
 		{
-			//fread(&d, sizeof(double), 1, f);
-			//printf("%.1lf ",d);
-			printf("%ld ",ftell(f));
-			if(fwrite(&zero, sizeof(double),1,f)<1)
-			{
-				perror("fwrite");
-				return 1;
-			}
-			printf("%ld \n",ftell(f));
+			if(fwrite(&zero, sizeof(double),1,f) != 1) return 1;
 			fseek(f, sizeof(double), SEEK_CUR);
 		}
 		if(n % 2) fseek(f, -sizeof(double), SEEK_CUR);
@@ -33,11 +25,11 @@ int get_zeroed(FILE* f)
 	return 0;
 }
 
-int create_matrix(char *fname) 
+int create_matrix(char *fname, int n) 
 {
 	FILE *f;
 	if((f = fopen(fname, "w")) == NULL) return 1;
-	int n = 4, i;
+	int i;
 	double d;
 	char* m = "MATRIX";
 	if(fwrite(m, sizeof(char),6, f) != 6) 
@@ -108,9 +100,10 @@ int main()
 {
 	FILE *f;
 	char* fname = "file.bin";
-
+	int n;
 	srand(time(0));
-	if(create_matrix(fname))
+	scanf("%d", &n);
+	if(create_matrix(fname,n))
 	{
 		printf("failed creating matrix\n");
 		return 0;
