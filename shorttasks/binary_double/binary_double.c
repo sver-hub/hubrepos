@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <inttypes.h>
-#include <math.h>
 
 int binary(double d) 
 {
@@ -32,8 +31,9 @@ int binary(double d)
 		putchar(mask & *n ? '1' : '0');
 		i++;
 		if(i == 1) sign = mask & *n ? 1:0;
-		if(i > 1 && i < 13 && mask & *n) por+=pow(2,12-i);
-		if(i > 12 && mask & *n) man += pow(2,-(i-12));
+		if(i > 1 && i < 13 && mask & *n) por += 1 << (12 - i);
+		if(i > 12 && mask & *n && i < 40) man += (1.0/(1 << (i - 12)));
+		else man += (1.0/((double)(1 << 28)*(double)(1 << (i % 40))));
 		if(i%4 == 0) putchar(' '); 
 	}
 	putchar('\n');
