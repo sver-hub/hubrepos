@@ -47,7 +47,7 @@ int get_matrix(char* fname, matrix *mat)
     }
 
     mat->p = tmp;
-    if(fread(mat->p, sizeof(double), k*k, f) != k*k) 
+    if(fread(mat->p, sizeof(double), k*k, f) != (unsigned long)(k*k)) 
     {
         fclose(f);
         return 1;
@@ -60,8 +60,7 @@ int get_matrix(char* fname, matrix *mat)
 int put_matrix(char *fname, matrix *mat) 
 {
     FILE *f;
-    int i, k = mat->n;
-    double d;
+    int k = mat->n;
     char* m = "MATRIX";
 
     if((f = fopen(fname, "w")) == NULL) return 1;
@@ -78,7 +77,7 @@ int put_matrix(char *fname, matrix *mat)
         return 1;
     }
 
-    if(fwrite(mat->p, sizeof(double), (k * k), f) != (k * k))
+    if(fwrite(mat->p, sizeof(double), (k * k), f) != (unsigned long)(k * k))
     {
         fclose(f);
         return 1;
@@ -183,14 +182,14 @@ int main(int argc, char **argv)
     }
 
     lib = dlopen(argv[1], RTLD_LAZY);
-    if( lib == NULL) 
+    if (lib == NULL) 
     {
         printf("lib not found - %s\n", dlerror());
         return 1;
     }
     
     func = dlsym(lib,"matrix_function");
-    if( func == NULL) 
+    if (func == NULL) 
     {
         printf("func not found\n");
         return 0;
