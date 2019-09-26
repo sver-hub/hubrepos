@@ -10,7 +10,10 @@ prog: matrix_pl.c
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
 plugin.so: plugin.c
-	$(CC) $(CFLAGS) -c -fPIC -o $@ $^
+	$(CC) $(CFLAGS) -shared -fPIC -o $@ $^
 
 clean:
 	rm -f $(BINARIES)
+
+test:
+	LD_LIBRARY_PATH="." ./prog plugin.so
