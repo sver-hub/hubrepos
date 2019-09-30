@@ -25,10 +25,7 @@ ssize_t fread_line(FILE* f, char** line, int* e)
         if(size == mem)
         {
             tmp = (char*) realloc(buff, (size + BUFFADD) * sizeof(char));
-            if(tmp == NULL)
-            {
-                return MEM_ERROR; 
-            }
+            if(tmp == NULL) return MEM_ERROR;
 
             buff = tmp;
             mem += BUFFADD;
