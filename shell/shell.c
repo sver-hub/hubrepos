@@ -16,8 +16,6 @@
 #define NEWJOB {0, NULL, 0}
 #define MAX 10
 
-
-
 //BUFFER
 typedef struct buffer
 {
@@ -198,9 +196,9 @@ void freehistory()
 	}
 }
 
-void err_com()
+void err_com(char *hint)
 {
-	printf("Invalid input\n");
+	printf("Syntax error: %s\n", hint);
 }
 
 
@@ -311,8 +309,8 @@ int sh_fg(char **args)
 
 	V.curpid = bgprocs[n - 1].pid;
 	printf("%s\n", bgprocs[n - 1].name);
+	V.curname = bgprocs[n - 1].name;
 
-	free(bgprocs[n - 1].name);
 	bgprocs[n - 1].name = NULL;
 
 	if (bgprocs[n - 1].status == 2)
@@ -380,7 +378,7 @@ int sh_history(char **args)
 	for (i = 0; i < t; i++)
 	{
 		if (j == MAX) j = 0;
-		printf("%d %s\n", 1 + n + i, V.history.commands[j]);
+		printf("   %d  %s\n", 1 + n + i, V.history.commands[j]);
 		j++;
 	}
 
@@ -464,6 +462,19 @@ int readline()
 			free(subst.chars);
 			resetbuf(&subst);
 		}
+		else if (c == '\\')
+		{
+			c = fgetc(stdin);
+			if (c == 'n') c = '\n';
+			else if (c == 'r') c = '\r';
+			else if (c == '\\') c = '\\';
+			else if (c == 't') c = '\t';
+			else if (c == '\n') c = fgetc(stdin);
+			else if (c == '\'' || c == '\"') append(&buf, "\\", 1);
+
+			append(&buf, &c, 1);
+			c = fgetc(stdin);
+		}
 		else
 		{
 			append(&buf, &c, 1);
@@ -474,18 +485,27 @@ int readline()
 	
 	endbuf(&buf);
 
+	if (buf.len == 0)
+	{
+		free(buf.chars);
+		return 1;
+	}
+
 	addhistory(buf.chars);
 	
 	return 0;
 }
 
 //todo error handling
-int splitcom(char ***result, int id)
+int splitcom(char ***result)
 {
 	int num = 0;
 	char** coms = NULL;
 	int i = 0;
-	char *line = V.history.commands[id];
+
+	if (readline()) return 0;
+
+	char *line = V.history.commands[V.history.top];
 	
 	buffer buf = NEWBUF;
 
@@ -501,6 +521,20 @@ int splitcom(char ***result, int id)
 
 			resetbuf(&buf);
 		}
+		else if (line[i] == '|' || line[i] == '<' || line[i] == '>' || line[i] == '&')
+		{
+			append(&buf, " ", 1);
+
+			if (line[i] == '>' && line[i + 1] == '>')
+			{
+				append(&buf, ">>", 2);
+				i++;
+			}
+			else
+				append(&buf, &line[i], 1);
+
+			append(&buf, " ", 1);
+		}
 		else
 			append(&buf, &line[i], 1);
 
@@ -514,9 +548,9 @@ int splitcom(char ***result, int id)
 
 		endbuf(&buf);
 		coms[num++] = buf.chars;
-
-		*result = coms;
 	}
+
+	*result = coms;
 
 	return num;
 }
@@ -578,11 +612,21 @@ int parsecom(char *line, char ***tokens)
 				return numargs;
 			}
 		}
+		else if (c == '\\' && (line[i + 1] == '\'' || line[i + 1] == '\"'))
+		{
+			append(&buf, &line[++i], 1);
+		}
 		else if (c == '\'')
 		{
 			if (quotes1 && quotes2 && quotes1 > quotes2)
 			{
-				err_com();
+				err_com("invalid quoting");
+				if (buf.mem > 0) free(buf.chars);
+				for (i = 0; i < numargs; i++)
+				{
+					free(args[i]);
+				}
+				free(args);
 				return -1;
 			}
 			quotes1 = quotes1 ? 0 : 1;
@@ -592,21 +636,17 @@ int parsecom(char *line, char ***tokens)
 		{
 			if (quotes2 && quotes1 && quotes2 > quotes1)
 			{
-				err_com();
+				err_com("invalid quoting");
+				if (buf.mem > 0) free(buf.chars);
+				for (i = 0; i < numargs; i++)
+				{
+					free(args[i]);
+				}
+				free(args);
 				return -1;
 			}
 			quotes2 = quotes2 ? 0 : 1;
 			if (quotes1) quotes1++;
-		}
-		else if (c == '\\')
-		{
-			c = line[i++];
-			if (c == 'n') c = '\n';
-			else if (c == 'r') c = '\r';
-			else if (c == '\\') c = '\\';
-			else if (c == 't') c = '\t';
-			else if (c == '\'') c = '\'';
-			else if (c == '\"') c = '\"';
 		}
 		else if (c == '$' && (quotes2 && (!quotes1 || (quotes2 < quotes1))))
 		{
@@ -661,6 +701,12 @@ int parsecom(char *line, char ***tokens)
 					append(&buf, num, 169);
 					free(num);
 				}
+				else
+				{
+					append(&buf, "${", 2);
+					append(&buf, subst.chars, 169);
+					append(&buf, "}", 1);
+				}
 
 				free(subst.chars);
 				resetbuf(&subst);
@@ -681,6 +727,21 @@ int parsecom(char *line, char ***tokens)
 	}
 }
 
+int checkfilename(char *line)
+{
+	int i = 0;
+
+	while (line[i] != '\0')
+	{
+		if (line[i] == '<' || line[i] == '>' || line[i] == ':' || line[i] == '\"' || line[i] == '/' || line[i] == '\\' 
+			|| line[i] == '|' || line[i] == '?' || line[i] == '*')
+			return 1;
+		i++;
+	}
+
+	return 0;
+}
+
 //maybe TODO exit status
 int parse_job(char **tokens, int numtokens)
 {
@@ -694,9 +755,12 @@ int parse_job(char **tokens, int numtokens)
 	int iarg = 0;
 	int memarg = 0;
 
+	int error = 0;
+
 
 	progs = malloc(sizeof(program));
 	if (progs == NULL) return MEM_ERROR;
+	progs[0].name = NULL;
 	progs[0].input_file = NULL;
 	progs[0].output_file = NULL;
 	progs[0].output_type = 0;
@@ -705,6 +769,13 @@ int parse_job(char **tokens, int numtokens)
 	{
 		if (!strcmp(tokens[j], "|"))
 		{
+			if (j == numtokens - 1 || iarg == 0)
+			{
+				err_com("invalid pipe");
+				error = 1;
+				break;
+			}
+
 			args = (char**)realloc(args, sizeof(char*)*(iarg + 1));
 			if (args == NULL) return MEM_ERROR;
 
@@ -716,6 +787,7 @@ int parse_job(char **tokens, int numtokens)
 			progs = (program*)realloc(progs, sizeof(program)*(iprog + 1));
 			if (progs == NULL) return MEM_ERROR;
 
+			progs[iprog].name = NULL;
 			progs[iprog].input_file = NULL;
 			progs[iprog].output_file = NULL;
 			progs[iprog].output_type = 0;
@@ -726,19 +798,21 @@ int parse_job(char **tokens, int numtokens)
 		}
 		else if (!strcmp(tokens[j], "<"))
 		{
-			if (++j == numtokens)
+			if (j == 0 || checkfilename(tokens[j - 1]) || ++j == numtokens)
 			{
-				err_com();
-				return -1;
+				err_com("invalid input redirecting");
+				error = 1;
+				break;
 			}
 			progs[iprog].input_file = tokens[j];
 		}
 		else if (!strcmp(tokens[j], ">") || !strcmp(tokens[j], ">>"))
 		{
-			if (++j == numtokens)
+			if (j == 0 || checkfilename(tokens[j + 1]) || ++j == numtokens)
 			{
-				err_com();
-				return -1;
+				err_com("invalid output redirecting");
+				error = 1;
+				break;
 			}
 			progs[iprog].output_file = tokens[j];
 			progs[iprog].output_type = !strcmp(tokens[j - 1], ">") ? 1 : 2;
@@ -748,7 +822,11 @@ int parse_job(char **tokens, int numtokens)
 			if (j == numtokens - 1)
 				jb.background = 1;
 			else
-				return -1;
+			{
+				err_com("illegal \'&\' placement");
+				error = 1;
+				break;
+			}
 		}
 		else
 		{
@@ -777,6 +855,16 @@ int parse_job(char **tokens, int numtokens)
 	jb.programs = progs;
 	jb.number_of_programs = iprog + 1;
 
+	if (error)
+	{
+		freejob(&jb);
+		while (j < numtokens)
+		{
+			free(tokens[j++]);
+		}
+		return -1;
+	}
+
 	addq(&jobq, jb);
 
 	return 0;
@@ -790,14 +878,14 @@ int get_jobs()
 	int tk;
 	int i;
 
-	sp = splitcom(&splitted, V.history.top);
+	sp = splitcom(&splitted);
 
 	if (sp == 0) return 0;
 
 	for (i = 0; i < sp; i++)
 	{
 		tk = parsecom(splitted[i], &tokens);
-		parse_job(tokens, tk);
+		if (tk > 0) parse_job(tokens, tk);
 		free(splitted[i]);
 	}
 
@@ -845,11 +933,15 @@ int execute(job jb)
 		if (jb.number_of_programs > 0 && iprog < jb.number_of_programs - 1)
 			if (pipe(p) == -1) return -1;
 
+		tcsetpgrp(0, getpgrp());
+
 		pid = fork();
 
 		if (pid == -1) return -1;
 		if (pid == 0) 
 		{
+			setpgrp();
+
 			if (iprog > 0)
 			{
 				//input from previous program
@@ -893,9 +985,9 @@ int execute(job jb)
 			if (!strcmp(jb.programs[iprog].name, "history"))
 				sh_history(jb.programs[iprog].arguments);
 			else
-			{
+			{		
 				execvp(jb.programs[iprog].name, jb.programs[iprog].arguments);
-				printf("Failed\n");
+				printf("-shell: %s: command not found\n", jb.programs[iprog].name);
 			}
 			_exit(1);
 		}
@@ -954,7 +1046,7 @@ void freejob(job *jb)
 
 	for (i = 0; i < jb->number_of_programs; i++)
 	{
-		free(jb->programs[i].name);
+		if (jb->programs[i].name != NULL) free(jb->programs[i].name);
 		for (j = 1; j < jb->programs[i].number_of_arguments; j++)
 		{
 			free(jb->programs[i].arguments[j]);
@@ -963,6 +1055,7 @@ void freejob(job *jb)
 		if (jb->programs[i].input_file != NULL) free(jb->programs[i].input_file);
 		if (jb->programs[i].output_file != NULL) free(jb->programs[i].output_file);
 	}
+	free(jb->programs);
 }
 
 /* MAIN */
@@ -1024,7 +1117,7 @@ int onexit()
 void inthndlr(int sig)
 {
 	sig += 0;
-	printf("\n%d\n", getpid());
+	printf("\n");
 	if (V.curpid != V.pid)
 	{
 		kill(V.curpid, SIGTERM);
@@ -1050,7 +1143,7 @@ void stophndlr(int sig)
 				bgprocs[i].name = buf.chars;
 				bgprocs[i].pid = V.curpid;
 				bgprocs[i].status = 2;
-				printf("[%d]\tStopped\t%s\n", i + 1, V.curname);
+				printf("[%d]\tStopped\t\t%s\n", i + 1, V.curname);
 				break;
 			}
 		}
@@ -1089,14 +1182,11 @@ int main(int argc, char** argv)
 	{
 		printf("%s$ ", V.username);
 
-		readline();
-
 		get_jobs();
-
 
 		while (jobq.rear >= jobq.front)
 		{
-			
+
 			jb = takeq(&jobq);
 	
 			execute(jb);
