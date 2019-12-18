@@ -290,7 +290,6 @@ int sh_fg(char **args)
 {
 	int n;
 	int status;
-	//pid_t wpid;
 
 	if (args[1] == NULL || args[2] != NULL)
 		return -1;
@@ -319,7 +318,6 @@ int sh_fg(char **args)
 
 	do
 	{
-		//wpid = 
 		waitpid(bgprocs[n - 1].pid, &status, WUNTRACED);
 	} while (!WIFEXITED(status) && !WIFSIGNALED(status) && !WIFSTOPPED(status));
 
@@ -653,16 +651,18 @@ int parsecom(char *line, char ***tokens)
 
 			if (c > '0' && c <= '9')
 			{
-				append(&buf, V.args[c - '0' - 1], 169);
+				if (V.numargs >= c - '0')
+					append(&buf, V.args[c - '0' - 1], 169);
+				else
+				{
+					append(&buf, "$", 1);
+					append(&buf, &c, 1);
+				}
 			}
 			else if (c == '#')
 			{
 				c = V.numargs + '0';
 				append(&buf, &c, 1);
-			}
-			else if (c == '?')
-			{
-
 			}
 			else if (c == '{')
 			{
@@ -919,7 +919,6 @@ int execute(job jb)
 {
 	int i;
 	int iprog;
-	//pid_t wpid;
 	int status;
 	pid_t pid;
 	int p[2];
@@ -1024,7 +1023,6 @@ int execute(job jb)
 	{
 		do
 		{
-			//wpid = 
 			waitpid(pid, &status, WUNTRACED);
 		} while (!WIFEXITED(status) && !WIFSIGNALED(status) && !WIFSTOPPED(status));
 	}
@@ -1042,7 +1040,7 @@ int execute(job jb)
 				break;
 			}
 		}
-		free(curname.chars);
+	
 		V.curname = NULL;
 	}
 
@@ -1121,13 +1119,22 @@ int onexit()
 	int i;
 
 	free(V.shell);
-	for (i = 0; i < V.numargs; i++)
-	{
-		free(V.args[i]);
-	}
 	free(V.args);
 	free(V.curname);
 	freehistory();
+
+	for (i = 0; i < MAX; i++)
+	{
+		if (bgprocs[i].name != NULL)
+		{
+			if (bgprocs[i].status == 0 || bgprocs[i].status == 2)
+			{
+				kill(bgprocs[i].pid, SIGTERM);
+			}
+
+			free(bgprocs[i].name);
+		}
+	}
 	
 	return 0;
 }
@@ -1146,7 +1153,6 @@ void stophndlr(int sig)
 {
 	sig += 0;
 	int i;
-	buffer buf = NEWBUF;
 
 	printf("\n");
 	if (V.curpid != V.pid)
@@ -1156,12 +1162,11 @@ void stophndlr(int sig)
 		{
 			if (bgprocs[i].name == NULL)
 			{
-				append(&buf, V.curname, 169);
-				endbuf(&buf);
-				bgprocs[i].name = buf.chars;
+				bgprocs[i].name = V.curname;
+				V.curname = NULL;
 				bgprocs[i].pid = V.curpid;
 				bgprocs[i].status = 2;
-				printf("[%d]\tStopped\t\t%s\n", i + 1, V.curname);
+				printf("[%d]\tStopped\t\t%s\n", i + 1, bgprocs[i].name);
 				break;
 			}
 		}
