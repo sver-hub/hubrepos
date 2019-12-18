@@ -429,7 +429,7 @@ int readline()
 
 	char c = fgetc(stdin);
 
-	while (c != '\n')
+	while (c != '\n' && c != EOF)
 	{
 		if (c == '!' && (buf.len == 0 || buf.chars[buf.len - 1] == ' '))
 		{
@@ -479,6 +479,12 @@ int readline()
 			c = fgetc(stdin);
 		}
 		
+	}
+	
+	if (c == EOF) 
+	{
+		printf("\n");
+		V.eof = 1;
 	}
 	
 	endbuf(&buf);
@@ -1120,7 +1126,7 @@ int onexit()
 
 	free(V.shell);
 	free(V.args);
-	free(V.curname);
+	if (V.curname != NULL) free(V.curname);
 	freehistory();
 
 	for (i = 0; i < MAX; i++)
@@ -1225,4 +1231,6 @@ int main(int argc, char** argv)
 	}
 
 	onexit();
+	
+	return 0;
 }
