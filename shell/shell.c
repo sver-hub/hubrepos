@@ -9,12 +9,14 @@
 #include <pwd.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/wait.h>
 
 #define BUFFADD 20
 #define MEM_ERROR -1
 #define NEWBUF {NULL, 0, 0}
 #define NEWJOB {0, NULL, 0}
 #define MAX 10
+#define EXIT -69
 
 //BUFFER
 typedef struct buffer
@@ -58,6 +60,7 @@ int endbuf(buffer *buf)
 	tmp[buf->len] = '\0';
 	buf->chars = tmp;
 	buf->mem = buf->len + 1;
+
 	return 0;
 }
 
@@ -161,7 +164,7 @@ struct vars
 	int numargs;
 	char **args;
 	uid_t uid;
-	char *pwd;
+	char pwd[150];
 	pid_t pid;
 	char *username;
 	int eof;
@@ -244,9 +247,7 @@ int sh_cd(char **args)
 		return -1;
 	}
 
-	free(V.pwd);
-	V.pwd = getcwd(NULL, 1);
-	//realpath(args[0], NULL);
+	getcwd(V.pwd, 150);
 
 	return 0;
 }
@@ -289,7 +290,7 @@ int sh_fg(char **args)
 {
 	int n;
 	int status;
-	pid_t wpid;
+	//pid_t wpid;
 
 	if (args[1] == NULL || args[2] != NULL)
 		return -1;
@@ -318,7 +319,8 @@ int sh_fg(char **args)
 
 	do
 	{
-		wpid = waitpid(bgprocs[n - 1].pid, &status, WUNTRACED);
+		//wpid = 
+		waitpid(bgprocs[n - 1].pid, &status, WUNTRACED);
 	} while (!WIFEXITED(status) && !WIFSIGNALED(status) && !WIFSTOPPED(status));
 
 
@@ -359,10 +361,8 @@ int sh_exit(char **args)
 {
 	if (args[1] != NULL)
 		return -1;
-
-	onexit();
-	exit(0);
-	return 0;
+	
+	return EXIT;
 }
 
 int sh_history(char **args)
@@ -496,7 +496,6 @@ int readline()
 	return 0;
 }
 
-//todo error handling
 int splitcom(char ***result)
 {
 	int num = 0;
@@ -555,7 +554,6 @@ int splitcom(char ***result)
 	return num;
 }
 
-//todo error handling
 int parsecom(char *line, char ***tokens)
 {
 	char **args = NULL;
@@ -584,9 +582,10 @@ int parsecom(char *line, char ***tokens)
 
 				if (++numargs > memargs)
 				{
-					args = (char**)realloc(args, sizeof(char*)*(memargs + BUFFADD));
-					if (args == NULL) return MEM_ERROR;
 					memargs += BUFFADD;
+					args = (char**)realloc(args, sizeof(char*)*memargs);
+					if (args == NULL) return MEM_ERROR;
+					
 				}
 
 				args[numargs - 1] = buf.chars;
@@ -742,11 +741,11 @@ int checkfilename(char *line)
 	return 0;
 }
 
-//maybe TODO exit status
 int parse_job(char **tokens, int numtokens)
 {
 	int j;
 	job jb;
+	jb.background = 0;
 
 	program *progs = NULL;
 	int iprog = 0;
@@ -795,6 +794,7 @@ int parse_job(char **tokens, int numtokens)
 			args = NULL;
 			iarg = 0;
 			memarg = 0;
+			free(tokens[j]);
 		}
 		else if (!strcmp(tokens[j], "<"))
 		{
@@ -805,6 +805,7 @@ int parse_job(char **tokens, int numtokens)
 				break;
 			}
 			progs[iprog].input_file = tokens[j];
+			free(tokens[j - 1]);
 		}
 		else if (!strcmp(tokens[j], ">") || !strcmp(tokens[j], ">>"))
 		{
@@ -816,9 +817,11 @@ int parse_job(char **tokens, int numtokens)
 			}
 			progs[iprog].output_file = tokens[j];
 			progs[iprog].output_type = !strcmp(tokens[j - 1], ">") ? 1 : 2;
+			free(tokens[j - 1]);
 		}
 		else if (!strcmp(tokens[j], "&"))
 		{
+			
 			if (j == numtokens - 1)
 				jb.background = 1;
 			else
@@ -827,6 +830,7 @@ int parse_job(char **tokens, int numtokens)
 				error = 1;
 				break;
 			}
+			free(tokens[j]);
 		}
 		else
 		{
@@ -887,7 +891,11 @@ int get_jobs()
 		tk = parsecom(splitted[i], &tokens);
 		if (tk > 0) parse_job(tokens, tk);
 		free(splitted[i]);
+		free(tokens);
 	}
+
+	free(splitted);
+	
 
 	return 0;
 }
@@ -911,7 +919,7 @@ int execute(job jb)
 {
 	int i;
 	int iprog;
-	pid_t wpid;
+	//pid_t wpid;
 	int status;
 	pid_t pid;
 	int p[2];
@@ -989,6 +997,8 @@ int execute(job jb)
 				execvp(jb.programs[iprog].name, jb.programs[iprog].arguments);
 				printf("-shell: %s: command not found\n", jb.programs[iprog].name);
 			}
+			onexit();
+			freejob(&jb);
 			_exit(1);
 		}
 
@@ -1014,7 +1024,8 @@ int execute(job jb)
 	{
 		do
 		{
-			wpid = waitpid(pid, &status, WUNTRACED);
+			//wpid = 
+			waitpid(pid, &status, WUNTRACED);
 		} while (!WIFEXITED(status) && !WIFSIGNALED(status) && !WIFSTOPPED(status));
 	}
 	else
@@ -1031,7 +1042,7 @@ int execute(job jb)
 				break;
 			}
 		}
-
+		free(curname.chars);
 		V.curname = NULL;
 	}
 
@@ -1066,7 +1077,7 @@ int init(int argc, char **argv)
 
 	V.user = getenv("USER");
 	V.home = getenv("HOME");
-	V.pwd = getcwd(NULL, 1);
+	getcwd(V.pwd, 150);
 	V.pid = getpid();
 	V.uid = getuid();
 	V.curpid = V.pid;
@@ -1107,8 +1118,15 @@ int init(int argc, char **argv)
 
 int onexit()
 {
-	free(V.pwd);
+	int i;
+
 	free(V.shell);
+	for (i = 0; i < V.numargs; i++)
+	{
+		free(V.args[i]);
+	}
+	free(V.args);
+	free(V.curname);
 	freehistory();
 	
 	return 0;
@@ -1171,6 +1189,7 @@ int main(int argc, char** argv)
 {
 	
 	job jb;
+	int code = 0;
 
 	init(argc, argv);
 
@@ -1189,15 +1208,16 @@ int main(int argc, char** argv)
 
 			jb = takeq(&jobq);
 	
-			execute(jb);
+			code = execute(jb);
 			freejob(&jb);
-			
+			if (code == EXIT)
+			{
+				V.eof = 1;
+				break;
+			}
 		}
 		resetq(&jobq);
 	}
 
 	onexit();
-	
-
-	
 }
