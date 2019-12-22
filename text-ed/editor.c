@@ -6,43 +6,61 @@
 #include <sys/types.h>
 #include <termios.h>
 #include <sys/ioctl.h>
-#include <math.h>
+#include <signal.h>
 
 #define BUFFADD 250
 #define MEM_ERROR -1
+#define NEWBUF {NULL, 0, 0}
 
-struct buffer
+typedef struct buffer
 {
   char *chars;
   int len;
   int mem;
-};
+} buffer;
 
-int append(struct buffer *buf, const char* s, int len)
+int append(buffer *buf, char* s, int l)
 {
-  char *tmp = NULL;
-  int j;
-  int memadd;
+  int i;
 
-  if (buf->len + len > buf->mem)
+  
+  for (i = 0; i < l; i++)
   {
-    memadd = BUFFADD > len ? BUFFADD : len;
+    if (l == 169 && s[i] == '\0')
+      break;
 
-    tmp = (char*)realloc(buf->chars, buf->mem + memadd);
-    if (tmp == NULL) return MEM_ERROR;
+    buf->len++;
+    if (buf->len > buf->mem)
+    {
+      buf->mem += BUFFADD;
+      buf->chars = (char*)realloc(buf->chars, buf->mem);
+      if (buf->chars == NULL) return MEM_ERROR;
+    }
 
-    buf->chars = tmp;
-    buf->mem += memadd;
+    buf->chars[buf->len - 1] = s[i];
   }
-
-  for (j = 0; j < len; j++)
-  {
-    buf->chars[j + buf->len] = s[j];
-  }
-
-  buf->len += len;
 
   return 0;
+}
+
+int endbuf(buffer *buf)
+{
+  char *tmp = NULL;
+
+  tmp = (char*)realloc(buf->chars, (buf->len + 1)*sizeof(char));
+  if (tmp == NULL) return MEM_ERROR;
+
+  tmp[buf->len] = '\0';
+  buf->chars = tmp;
+  buf->mem = buf->len + 1;
+  return 0;
+}
+
+void resetbuf(buffer *buf)
+{
+  buf->chars = NULL;
+  buf->len = 0;
+  buf->mem = 0;
 }
 
 typedef struct str
@@ -296,7 +314,6 @@ int main(int argc, char **argv)
         {
           if (atoi(ar.lines[2].chars))
           {
-            printf("%d\n", atoi(ar.lines[2].chars));
             if (atoi(ar.lines[2].chars) < 0 || atoi(ar.lines[2].chars) > T.num)
               printf("out of bounds\n");
             else
@@ -367,13 +384,13 @@ int main(int argc, char **argv)
       if (ar.num == 2 && !strcmp(ar.lines[1].chars, "force"))
       {
         freear(&ar);
-        e_exit();
+        break;
       }
       else if (ar.num == 1)
         if (E.saved)
         {
           freear(&ar);
-          e_exit();
+          break;
         }
         else 
           printf("progress wasn`t saved, unable to exit\n");
@@ -386,7 +403,10 @@ int main(int argc, char **argv)
 
     freear(&ar);
   
-  } //while
+  }
+
+  freear(&ahelp);
+  freear(&T);
   
 } //main
 
@@ -510,42 +530,25 @@ int get_window_size()
 */
 ssize_t get_line(FILE *f, char **line, int *eofflag)
 {
-    char* buff = NULL;
-    char *tmp = NULL;
-    size_t size = 0;
-    size_t mem = 0;
-    int symbol = 0;
+    buffer buf = NEWBUF;
+    char c;
 
     *eofflag = 0;
 
     while(1)
     {
-        symbol = fgetc(f);
+        c = fgetc(f);
 
-        if (symbol == '\n' || (symbol == EOF && (*eofflag = 1))) break;
+        if (c == '\n' || (c == EOF && (*eofflag = 1))) break;
 
-        if (size == mem)
-        {
-            tmp = (char*) realloc(buff, (size + BUFFADD) * sizeof(char));
-            if (tmp == NULL) return MEM_ERROR;
-
-            buff = tmp;
-            mem += BUFFADD;
-        }
-
-        buff[size++] = (char)symbol;
+        append(&buf, &c, 1);
     }
 
-    tmp = (char*) realloc(buff, (size + 1) * sizeof(char));
+    endbuf(&buf);
 
-    if (tmp == NULL) return MEM_ERROR;
+    *line = buf.chars;
 
-    buff = tmp;
-    buff[size] = '\0';
-
-    *line = buff;
-
-    return size;
+    return buf.len;
 }
 
 ssize_t read_file(FILE *f, str **lines)
@@ -564,20 +567,20 @@ ssize_t read_file(FILE *f, str **lines)
 
         if (size == mem)
         {
-            tmp = (str*) realloc(buff, (size + BUFFADD) * sizeof(str));
-            if(tmp == NULL) return MEM_ERROR;
+            mem += BUFFADD;
+            tmp = (str*) realloc(buff, mem * sizeof(str));
+            if (tmp == NULL) return MEM_ERROR;
 
             buff = tmp;
-            mem += BUFFADD;
         }
 
         buff[size++] = line;
 
-        if(eofflag) break;
+        if (eofflag) break;
 
     }
 
-    tmp = (str*) realloc(buff, size * sizeof(str));
+    tmp = (str*)realloc(buff, size * sizeof(str));
     if(tmp == NULL) return MEM_ERROR;
 
     *lines = tmp;
@@ -642,12 +645,9 @@ int e_write(char *filename)
     return 1;
   }
 
-  struct buffer buf;
+  buffer buf = NEWBUF;
   int j;
-  buf.chars = 0;
-  buf.len = 0;
-  buf.mem = 0;
-
+  
   for (j = 0; j < T.num; j++)
   {
     append(&buf, T.lines[j].chars, T.lines[j].length);
@@ -734,6 +734,12 @@ int e_insert_after(str toin, int pos, struct arraystr *ar)
   str* newlines = NULL;
   char *tmp = NULL;
 
+  if (pos > ar->num || pos < 0) 
+    {
+      printf("out of bounds\n");
+      return -1;
+    }
+
   for (j = 0; j < toin.length; j++)
     if (toin.chars[j] == '\n')
       strtoadd++;
@@ -775,6 +781,7 @@ int e_insert_after(str toin, int pos, struct arraystr *ar)
 
   if (ar->lines != NULL)
     free(ar->lines);
+
   ar->lines = newlines;
   ar->num += strtoadd;
 
@@ -801,7 +808,7 @@ int e_replace_substr(int start, int end, str tofind, str toreplace)
 
   for (j = start - 1; j < end;)
   {
-    if (tofind.length <=1 && tofind.chars[0] == '^')
+    if (tofind.length <= 1 && tofind.chars[0] == '^')
     {
       index = 0;
       tofind.length = 0;
@@ -839,6 +846,8 @@ int e_replace_substr(int start, int end, str tofind, str toreplace)
 
       e_delr(j+1, j+1);
       added = e_insert_after(toin, j, &T);
+
+      free(toin.chars);
       j += added;
       end += (added - 1);
     }
@@ -1052,34 +1061,45 @@ void e_help()
   E.tabwidth = t;
 }
 
-void e_exit()
-{
-  freear(&T);
-  freear(&ahelp);
-  exit(0);
-}
-
 /* PRINT 
   ____________
 */
-int app_num(struct buffer *buf, int n) 
+
+int itoa(buffer *buf, int n)
 {
-  char *m;
-  int k;
-  int t = (int)(ceil(log10(n)));
-  if (n == 1) t = 1;
-  else if (n == 10) t = 2;
-  else if (n == 100) t = 3;
-  else if (n == 1000) t = 4;
+  char *res;
+  int length = 1;
+  int i;
+  int del = 10;
+  char swap;
 
-  for (k = t; k < E.blank - 1; k++)
+  while (n / del > 0) 
+  {
+    length++;
+    del *= 10;
+  }
+
+  res = malloc(length);
+
+  del = 1;
+  for (i = 0; i < length; i++)
+  {
+    res[i] = ((n / del) % 10) + '0';
+    del *= 10;
+  }
+
+  for (i = 0; i < length / 2; i++)
+  {
+    swap = res[length - 1 - i];
+    res[length - 1 - i] = res[i];
+    res[i] = swap;
+  }
+
+  for (i = length; i < E.blank - 1; i++)
     append(buf, " ", 1);
-  m = malloc(t);
-  sprintf(m, "%d", n);
-  append(buf, m, t);
-  free(m);
+  append(buf, res, length);
   append(buf, " ", 1);
-
+  free(res);
   return 0;
 }
 
@@ -1172,7 +1192,7 @@ int page(struct pagesInfo *I, struct arraystr *ar)
       for (k = 0; k < E.blank - 3; k++) append(&buf, " ", 1);
       append(&buf, "-> ", 3);
     }
-    else if (E.numbers) app_num(&buf, I->index + 1);
+    else if (E.numbers) itoa(&buf, I->index + 1);
     else if (E.wrap) for (k = 0; k < E.blank; k++) append(&buf, " ", 1);
 
 
@@ -1328,11 +1348,12 @@ int print(int start, int end, struct arraystr *ar)
 
 void sighandler(int sig)
 {
+  sig+=0;
   get_window_size();
   // if (E.printing)
   // {
   //   I.of = 1;
-  //   page(&I);
+  //   page(&I, &T);
   // }
 }
 
