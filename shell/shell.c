@@ -651,7 +651,7 @@ int parsecom(char *line, char ***tokens)
 			quotes2 = quotes2 ? 0 : 1;
 			if (quotes1) quotes1++;
 		}
-		else if (c == '$' && (quotes2 && (!quotes1 || (quotes2 < quotes1))))
+		else if (c == '$' && ((!quotes2 && !quotes1) || (quotes2 && (!quotes1 || (quotes2 < quotes1)))))
 		{
 			c = line[i++];
 
