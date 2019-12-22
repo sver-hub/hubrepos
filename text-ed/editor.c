@@ -1351,13 +1351,15 @@ void sighandler(int sig)
 {
   sig+=0;
   get_window_size();
-  disable_raw_mode();
+  
   if (E.printing)
   {
+    disable_raw_mode();
     I.of = 1;
     page(&I, &T);
+    enable_raw_mode();
   }
-  enable_raw_mode();
+  
 }
 
 
