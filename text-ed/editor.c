@@ -157,6 +157,8 @@ void err_com()
 
 int main(int argc, char **argv)
 {
+  int eof = 0;
+
   init();
 	if (argc >= 2)
   {
@@ -167,11 +169,11 @@ int main(int argc, char **argv)
   ar.lines = NULL;
   ar.num = 0;
 
-  while (1)
+  while (!eof)
   {
     freear(&ar);
     printf("editor: ");
-    read_command(&ar); 
+    if (read_command(&ar) == 1) eof = 1;
 
     if (ar.num < 1)
       err_com();
@@ -306,7 +308,7 @@ int main(int argc, char **argv)
         else 
           e_insert_symbol(&T.lines[atoi(ar.lines[2].chars) - 1], *ar.lines[4].chars, atoi(ar.lines[3].chars));
       }
-      else if (!strcmp(ar.lines[1].chars, "after"))
+      else if (ar.num > 1 && !strcmp(ar.lines[1].chars, "after"))
       {
         if (ar.num == 3)
           e_insert_after(ar.lines[2], T.num, &T);
@@ -402,7 +404,6 @@ int main(int argc, char **argv)
       err_com();
 
     freear(&ar);
-  
   }
 
   freear(&ahelp);
@@ -1350,11 +1351,13 @@ void sighandler(int sig)
 {
   sig+=0;
   get_window_size();
-  // if (E.printing)
-  // {
-  //   I.of = 1;
-  //   page(&I, &T);
-  // }
+  disable_raw_mode();
+  if (E.printing)
+  {
+    I.of = 1;
+    page(&I, &T);
+  }
+  enable_raw_mode();
 }
 
 
@@ -1398,6 +1401,14 @@ int read_command(struct arraystr *ar)
   while (1)
   {
     c = fgetc(stdin);
+
+    if (c == EOF)
+    {
+
+      if (buf.len > 0 || parn == 2) add_token(ar, &buf);
+      printf("\n");
+      return 1;
+    }
 
     if (c == '\n')
     {
