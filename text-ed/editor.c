@@ -692,11 +692,63 @@ void set_tabwidth(int k)
   __________________
 */
 
+
+
+int e_insert_after(str toin, int pos, struct arraystr *ar)
+{
+  int j;
+  int i;
+  int strtoadd = 1;
+  buffer buf = NEWBUF;
+  
+
+  if (pos > ar->num || pos < 0) 
+    {
+      printf("out of bounds\n");
+      return -1;
+    }
+
+  for (j = 0; j < toin.length; j++)
+    if (toin.chars[j] == '\n')
+      strtoadd++;
+
+  T.lines = (str*)realloc(T.lines, sizeof(str)*(T.num + strtoadd));
+  if (T.lines == NULL) return MEM_ERROR;
+
+  for (i = T.num - 1; i >= pos; i--)
+  {
+    T.lines[i + strtoadd] = T.lines[i];
+  }
+
+  j = 0;
+  for (i = 0; i <= toin.length; i++)
+  {
+    if (toin.chars[i] == '\n' || i == toin.length)
+    {
+      endbuf(&buf);
+
+      T.lines[pos + j].chars = buf.chars;
+      T.lines[pos + j].length = buf.len;
+
+      j++;
+      resetbuf(&buf);
+    }
+    else
+      append(&buf, &toin.chars[i], 1);
+  }
+
+  T.num += strtoadd;
+  
+  E.saved = 0;
+  return strtoadd;
+}
+
 int idxsubstr(str line, str tofind)
 {
   int i;
   int j;
   int found;
+  int res = 0;
 
   if (tofind.length < 1)
   {
@@ -711,95 +763,30 @@ int idxsubstr(str line, str tofind)
       found = 1;
       for (j = 1; j < tofind.length; j++)
       {
-        if (tofind.chars[j] != line.chars[i + j])
+        if (tofind.chars[j] != line.chars[++i])
         {
           found = 0;
           break;
         }
       }
       if (found)
-        return i;
+        res++;
     }
   }
 
-  return -1;
-}
-
-int e_insert_after(str toin, int pos, struct arraystr *ar)
-{
-  int j;
-  int i;
-  int k = 0;
-  int idx = 0;
-  int strtoadd = 1;
-  str* newlines = NULL;
-  char *tmp = NULL;
-
-  if (pos > ar->num || pos < 0) 
-    {
-      printf("out of bounds\n");
-      return -1;
-    }
-
-  for (j = 0; j < toin.length; j++)
-    if (toin.chars[j] == '\n')
-      strtoadd++;
-
-  newlines = malloc((ar->num + strtoadd)*sizeof(str));
-  if (newlines == NULL) return MEM_ERROR;
-
-  for (j = 0; j < pos; j++)
-  {
-    newlines[idx++] = ar->lines[j];
-  }
-
-  tmp = malloc(toin.length);
-  if (tmp == NULL) return MEM_ERROR;
-
-  for (i = 0; i <= toin.length; i++)
-  {
-    if (toin.chars[i] == '\n' || i == toin.length)
-    {
-      tmp[k] = '\0';
-      tmp = realloc(tmp, k + 1);
-      if (tmp == NULL) return MEM_ERROR;
-
-      newlines[idx].chars = tmp;
-      newlines[idx++].length = k;
-
-      k = 0;
-      tmp = malloc(toin.length);
-      if (tmp == NULL) return MEM_ERROR;
-    }
-    else
-      tmp[k++] = toin.chars[i];
-  }
-
-  for(; j < ar->num; j++)
-  {
-    newlines[idx++] = ar->lines[j];
-  }
-
-  if (ar->lines != NULL)
-    free(ar->lines);
-
-  ar->lines = newlines;
-  ar->num += strtoadd;
-
-  E.saved = 0;
-  return strtoadd;
+  return res;
 }
 
 int e_replace_substr(int start, int end, str tofind, str toreplace)
 {
   int j;
   int i;
-  int idx;
-  int index;
   int added;
-  char *tmp = NULL;
+  int numrep = 0;
+  buffer buf = NEWBUF;
   str toin;
-
+  int found;
+  int k;
 
   if (start < 1 || start > T.num || end < 1 || end > T.num)
   {
@@ -809,51 +796,77 @@ int e_replace_substr(int start, int end, str tofind, str toreplace)
 
   for (j = start - 1; j < end;)
   {
-    if (tofind.length <= 1 && tofind.chars[0] == '^')
+    if (tofind.length <= 1 && (tofind.chars[0] == '^' || tofind.chars[0] == '$'))
     {
-      index = 0;
-      tofind.length = 0;
-    }
-    else if (tofind.length <= 1 && tofind.chars[0] == '$')
-    {
-      index = T.lines[j].length;
-      tofind.length = 0;
-    }
-    else
-      index = idxsubstr(T.lines[j], tofind);
+      if (tofind.chars[0] == '^')
+        append(&buf, toreplace.chars, toreplace.length);
 
-    if (index != -1)
-    {
-      idx = 0;
-      tmp = (char*)malloc(T.lines[j].length - tofind.length + toreplace.length + 1);
-      if (tmp == NULL) return MEM_ERROR;
+      append(&buf, T.lines[j].chars, T.lines[j].length);
 
-      for (i = 0; i < index; i++)
-      {
-        tmp[idx++] = T.lines[j].chars[i];
-      }
-      for (i = 0; i < toreplace.length; i++)
-      {
-        tmp[idx++] = toreplace.chars[i];
-      }
-      for (i = index + tofind.length; i < T.lines[j].length; i++)
-      {
-        tmp[idx++] = T.lines[j].chars[i];
-      }
-      tmp[idx] = '\0';
+      if (tofind.chars[0] == '$')
+        append(&buf, toreplace.chars, toreplace.length);
 
-      toin.chars = tmp;
-      toin.length = T.lines[j].length - tofind.length + toreplace.length;
+      endbuf(&buf);
+
+      toin.chars = buf.chars;
+      toin.length = buf.len;
+
+      resetbuf(&buf);
 
       e_delr(j+1, j+1);
       added = e_insert_after(toin, j, &T);
 
-      free(toin.chars);
       j += added;
       end += (added - 1);
     }
-    else j++;
-  }
+    else
+      numrep = idxsubstr(T.lines[j], tofind);
+
+    if (numrep > 0)
+    {
+      for (i = 0; i < T.lines[j].length; i++)
+      {
+        if (T.lines[j].chars[i] == tofind.chars[0])
+        {
+          found = 1;
+          for (k = 1; k < tofind.length; k++)
+          {
+            if (i + k == T.lines[j].length || T.lines[j].chars[i + k] != tofind.chars[k])
+            {
+              found = 0;
+              break;
+            }
+          }
+
+          if (found)
+          {
+            append(&buf, toreplace.chars, toreplace.length);
+            i += tofind.length - 1;
+          }
+          else
+            append(&buf, &T.lines[j].chars[i], 1);
+
+        }
+        else
+          append(&buf, &T.lines[j].chars[i], 1);
+      }
+
+      endbuf(&buf);
+
+      toin.chars = buf.chars;
+      toin.length = buf.len;
+
+      e_delr(j+1, j+1);
+      added = e_insert_after(toin, j, &T);
+
+      resetbuf(&buf);
+
+      j += added;
+      end += (added - 1);
+    }
+    else
+      j++;
+   }
 
   return 0;
 }
@@ -909,32 +922,41 @@ int e_edit(str *line, char c, int pos)
 }
 
 int e_delr(int start, int end)
-{ 
-  int j;
-  int idx = 0;
-  int len;
-  str *tmp = NULL;
+{
+  int numdel;
+  int numdel1;
 
   start = start < 1 ? 0 : start - 1;
   end = end > T.num ? T.num : end;
 
-  len = (T.num - (end - start));
+  numdel1 = end - start;
+  numdel = numdel1;
 
-  tmp = (str*)malloc(len*sizeof(str));
-  if (tmp == NULL) return MEM_ERROR;
-
-  for (j = 0; j < T.num; j++)
+  while (numdel > 0 && end < T.num)
   {
-    while (j >= start && j < end)
-    {
-      free(T.lines[j++].chars);
-    }
-    tmp[idx++] = T.lines[j];
+    free(T.lines[start].chars);
+    T.lines[start] = T.lines[end];
+    start++;
+    end++;
+    numdel--;
   }
 
-  free(T.lines);
-  T.lines = tmp;
-  T.num = len;
+  while (numdel == 0 && end < T.num)
+  {
+    T.lines[start] = T.lines[end];
+    start++;
+    end++;
+  }
+
+  while (numdel > 0)
+  {
+    free(T.lines[start++].chars);
+    numdel--;
+  }
+
+  T.lines = (str*)realloc(T.lines, (T.num - numdel1)*sizeof(str));
+  if (T.lines == NULL) return MEM_ERROR;
+  T.num -= numdel1;
 
   E.saved = 0;
   return 0;
