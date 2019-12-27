@@ -271,11 +271,11 @@ int main(int argc,char **argv)
     start = clock();
 
 
-    while (!eof)
+    while (1)
     {    
     	curr = clock();
 
-    	if ((float)(curr - start) /CLOCKS_PER_SEC >= 10)
+    	if ((float)(curr - start) /CLOCKS_PER_SEC >= 10 || eof)
     	{
     		finish_counter = 0;
 	    	current_index--;
@@ -351,6 +351,7 @@ int main(int argc,char **argv)
 		            pthread_mutex_unlock(&thread_params[i].mut);
 		        }
 		    }
+		    if (eof) break;
 		    start = clock();
 		}
 	}
