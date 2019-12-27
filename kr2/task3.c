@@ -175,8 +175,10 @@ void *body(void *args)
 
             for (i = 0; i <= line.len; i++)
             {
-                if (i == line.len || (line.chars[i] == ' ' && buf.len > 0))
+                if (i == line.len || line.chars[i] == ' ')
                 {
+                	if (buf.len == 0) continue;
+                	
                 	endbuf(&buf);
 
                 	if (max < buf.len)
@@ -186,10 +188,13 @@ void *body(void *args)
                 		word = buf.chars;
                 		count = 1;
                 	}
-                	else if (max == buf.len && !strcmp(word, buf.chars))
+                	else if (max == buf.len && max > 0 && !strcmp(word, buf.chars))
                 	{
                 		count++;
+                		free(buf.chars);
                 	}
+                	else
+                		free(buf.chars);
 
                 	resetbuf(&buf);
                 }
@@ -203,7 +208,7 @@ void *body(void *args)
             	Word = word;
             	Count = 1;
             }
-            else if (Max == max && !strcmp(Word, word))
+            else if (Max == max && max > 0 && !strcmp(Word, word))
             {
             	Count += count;
             	free(word);
@@ -278,8 +283,6 @@ int main(int argc,char **argv)
     	if ((float)(curr - start) /CLOCKS_PER_SEC >= 10 || eof)
     	{
     		finish_counter = 0;
-	    	current_index--;
-	    	if (current_index < 0) current_index = 0;
 	    	printf("checking...\n");
 		    for (i = 0; i < num_threads; i++)
 		    {
@@ -370,6 +373,13 @@ int main(int argc,char **argv)
     free(thread_params);
 
     printf("Longest word - \t%s\nwith length of \t%d\nencounteres \t%d\n", Word, Max, Count);
+
+    for (i = 0; i < numlines; i++)
+    {
+    	free(lines[i].chars);
+    }
+    free(lines);
+    free(Word);
 
     return 0;
 }
